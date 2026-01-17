@@ -15,12 +15,34 @@ export async function startCameraStream(
 ): Promise<MediaStream> {
   const { facingMode, width, height } = { ...DEFAULT_CONFIG, ...config };
 
+  // Try with full constraints first (works on mobile devices)
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width: { ideal: width },
+        height: { ideal: height },
+      },
+    });
+  } catch (firstError) {
+    console.warn("Camera init with facingMode failed, trying without:", firstError);
+  }
+
+  // Fallback: try without facingMode (for USB webcams on Raspberry Pi, etc.)
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: width },
+        height: { ideal: height },
+      },
+    });
+  } catch (secondError) {
+    console.warn("Camera init with resolution constraints failed:", secondError);
+  }
+
+  // Final fallback: minimal constraints (just get any video)
   return navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode,
-      width: { ideal: width },
-      height: { ideal: height },
-    },
+    video: true,
   });
 }
 
@@ -55,6 +77,10 @@ export function getCameraErrorMessage(error: unknown): string {
         return "Camera permission denied. Please allow camera access.";
       case "NotFoundError":
         return "No camera found on this device.";
+      case "OverconstrainedError":
+        return "Camera does not support the requested settings.";
+      case "NotReadableError":
+        return "Camera is in use by another application.";
       default:
         return `Camera error: ${error.message}`;
     }
