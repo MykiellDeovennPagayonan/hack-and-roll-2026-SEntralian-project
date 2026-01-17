@@ -2,8 +2,8 @@ use reqwest::Client;
 
 use crate::models::{
     EmbeddingInput, OllamaChatMessage, OllamaChatRequest, OllamaChatResponse,
-    OllamaEmbeddingRequest, OllamaEmbeddingResponse, OllamaGenerateRequest,
-    OllamaGenerateResponse, OllamaOptions, TextEmbedding,
+    OllamaEmbeddingRequest, OllamaEmbeddingResponse, OllamaGenerateRequest, OllamaGenerateResponse,
+    OllamaOptions, TextEmbedding,
 };
 
 const EMBEDDING_MODEL: &str = "nomic-embed-text";
@@ -197,7 +197,10 @@ impl OllamaService {
     }
 
     /// Create TextEmbeddings from multiple texts
-    pub async fn create_text_embeddings(&self, texts: &[String]) -> Result<Vec<TextEmbedding>, String> {
+    pub async fn create_text_embeddings(
+        &self,
+        texts: &[String],
+    ) -> Result<Vec<TextEmbedding>, String> {
         let embeddings = self.embed_texts(texts).await?;
 
         Ok(texts
@@ -208,6 +211,73 @@ impl OllamaService {
                 embedding,
             })
             .collect())
+    }
+
+    pub async fn extract_words_from_image(
+        &self,
+        image_base64: &str,
+        word_library: &[String],
+    ) -> Result<Vec<String>, String> {
+        let word_list = word_library.join(", ");
+
+        let prompt = format!(
+            "Look at this image.\n\n\\n\n\
+        What is the SINGLE BEST word that describes:\n\
+        1. The main visible object/item or profession\n\
+        2. The character's emotion or state\n\
+        3. The overall style or theme\n\n\
+        Suggested words (use these if they fit, or choose your own): {}
+        Answer with exactly 3 words separated by commas.",
+            word_list
+        );
+        let message = OllamaChatMessage {
+            role: "user".into(),
+            content: prompt,
+            images: Some(vec![image_base64.into()]),
+        };
+
+        let request = OllamaChatRequest {
+            model: "gemma3:4b".into(),
+            messages: vec![message],
+            stream: false,
+            options: OllamaOptions { temperature: 0.3 }, // Lower temperature for more consistent output
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("Ollama error ({}): {}", status, text));
+        }
+
+        let result: OllamaChatResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+
+        // Parse the response to extract the 3 words
+        let words: Vec<String> = result
+            .message
+            .content
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .take(3)
+            .map(|s| s.to_string())
+            .collect();
+
+        if words.len() != 3 {
+            return Err(format!("Expected 3 words but got {}", words.len()));
+        }
+
+        Ok(words)
     }
 }
 

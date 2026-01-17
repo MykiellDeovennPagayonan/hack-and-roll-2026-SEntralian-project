@@ -13,3 +13,12 @@ pub struct RoastResponse {
     pub roast: Option<String>,
     pub error: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+pub struct ImageMatchResponse {
+    pub success: bool,
+    pub matched_image_url: Option<String>,
+    pub extracted_words: Option<Vec<String>>,
+    pub similarity_score: Option<f32>,
+    pub error: Option<String>,
+}

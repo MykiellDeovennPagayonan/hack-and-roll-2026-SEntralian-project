@@ -49,7 +49,7 @@ export class BluetoothPrinterUtil {
     return typeof navigator !== "undefined" && "bluetooth" in navigator;
   }
 
-  static async connectToPrinter(): Promise<{
+  static async connectToPrinter(filterByX: boolean = true): Promise<{
     device: BluetoothDevice;
     server: BluetoothRemoteGATTServer;
     service: BluetoothRemoteGATTService;
@@ -60,9 +60,7 @@ export class BluetoothPrinterUtil {
     }
 
     try {
-      // Request all devices and show the service we need
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
+      const options: RequestDeviceOptions = {
         optionalServices: [
           "0000ae30-0000-1000-8000-00805f9b34fb", // X5 printer service
           "000018f0-0000-1000-8000-00805f9b34fb", // Standard ESC/POS
@@ -70,7 +68,16 @@ export class BluetoothPrinterUtil {
           "49535343-fe7d-4ae5-8fa9-9fafd205e455", // Generic BLE
           "e7810a71-73ae-499d-8c15-faa9aef0c3f2", // Alternative
         ],
-      });
+      };
+
+      // If filtering by X, use filters instead of acceptAllDevices
+      if (filterByX) {
+        options.filters = [{ namePrefix: "X" }, { namePrefix: "x" }];
+      } else {
+        options.acceptAllDevices = true;
+      }
+
+      const device = await navigator.bluetooth.requestDevice(options);
 
       console.log("Device selected:", device.name);
 
@@ -113,7 +120,7 @@ export class BluetoothPrinterUtil {
    * Initialize Cat/X5 printer with required commands
    */
   private static async initializeCatPrinter(
-    characteristic: BluetoothRemoteGATTCharacteristic
+    characteristic: BluetoothRemoteGATTCharacteristic,
   ): Promise<void> {
     console.log("Initializing Cat printer...");
 
@@ -160,7 +167,7 @@ export class BluetoothPrinterUtil {
    */
   static async writeData(
     characteristic: BluetoothRemoteGATTCharacteristic,
-    data: Uint8Array
+    data: Uint8Array,
   ): Promise<void> {
     // Cat printers work better with smaller chunks
     const CHUNK_SIZE = 128;
@@ -187,52 +194,92 @@ export class BluetoothPrinterUtil {
   }
 
   /**
-   * Print processed image (FOR X5/CAT PRINTERS)
+   * Send a single command to the printer
+   */
+  private static async sendCommand(
+    characteristic: BluetoothRemoteGATTCharacteristic,
+    data: Uint8Array,
+  ): Promise<void> {
+    // Log the first few bytes for debugging
+    const preview = Array.from(data.slice(0, 10))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+
+    try {
+      // Prefer writeValueWithoutResponse for speed, fall back to writeValue
+      if (characteristic.properties.writeWithoutResponse) {
+        await characteristic.writeValueWithoutResponse(data);
+      } else if (characteristic.properties.write) {
+        await characteristic.writeValue(data);
+      } else {
+        throw new Error("Characteristic does not support writing");
+      }
+    } catch (error) {
+      console.error(`Failed to send command [${preview}...]:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Print processed image (FOR CAT PRINTERS)
    */
   static async printProcessedImage(
     characteristic: BluetoothRemoteGATTCharacteristic,
-    imageData: ImageData
+    imageData: ImageData,
+    onProgress?: (current: number, total: number) => void,
   ): Promise<void> {
-    console.log("Printing on X5/Cat printer...");
+    console.log("=== Starting Print Job ===");
     console.log(`Image size: ${imageData.width}x${imageData.height}`);
+    console.log(
+      `Characteristic properties:`,
+      JSON.stringify({
+        write: characteristic.properties.write,
+        writeWithoutResponse: characteristic.properties.writeWithoutResponse,
+        read: characteristic.properties.read,
+        notify: characteristic.properties.notify,
+      }),
+    );
 
-    // Generate X5-specific print commands
+    // Generate print commands
     const commands = X5PrinterProtocol.createPrintCommands(imageData);
+    console.log(`Generated ${commands.length} commands`);
 
-    console.log(`Sending ${commands.length} commands...`);
+    // Send each command with delay
+    const COMMAND_DELAY = 20; // ms between commands (adjust if needed)
+    const BATCH_SIZE = 10; // Log progress every N commands
+    const BATCH_DELAY = 50; // Extra delay every batch to prevent buffer overflow
 
-    // Send each command
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i];
 
       try {
-        if (characteristic.properties.writeWithoutResponse) {
-          await characteristic.writeValueWithoutResponse(cmd);
-        } else {
-          await characteristic.writeValue(cmd);
-        }
+        await this.sendCommand(characteristic, cmd);
 
-        // Small delay between commands (important for X5!)
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Small delay between each command
+        await new Promise((resolve) => setTimeout(resolve, COMMAND_DELAY));
 
-        // Progress logging
-        if (i % 50 === 0) {
-          console.log(`Progress: ${i}/${commands.length}`);
+        // Extra delay and progress logging every batch
+        if (i > 0 && i % BATCH_SIZE === 0) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+          const percent = Math.round((i / commands.length) * 100);
+          console.log(`Progress: ${i}/${commands.length} (${percent}%)`);
+          onProgress?.(i, commands.length);
         }
       } catch (error) {
-        console.error(`Error at command ${i}:`, error);
-        throw error;
+        console.error(`Error at command ${i}/${commands.length}:`, error);
+        throw new Error(`Print failed at command ${i}: ${error}`);
       }
     }
 
-    console.log("Print commands sent successfully!");
+    console.log("=== Print Job Complete ===");
+    onProgress?.(commands.length, commands.length);
   }
 
   /**
    * Print and cut (paper feed for X5)
    */
   static async printAndCut(
-    characteristic: BluetoothRemoteGATTCharacteristic
+    characteristic: BluetoothRemoteGATTCharacteristic,
   ): Promise<void> {
     const commands = X5PrinterProtocol.feedPaper(5);
 

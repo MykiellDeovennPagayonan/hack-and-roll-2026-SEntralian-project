@@ -15,3 +15,9 @@ pub struct ImagePoemRequest {
 pub struct ImageRoastRequest {
     pub image_base64: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ImageMatchRequest {
+    /// Keywords/moods to match against the image library
+    pub words: Vec<String>,
+}

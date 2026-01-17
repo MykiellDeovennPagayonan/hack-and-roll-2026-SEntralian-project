@@ -1,9 +1,11 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useBluetoothPrinter } from '@/lib/hooks';
+import { usePrinter } from '@/lib/contexts';
 
 export default function PrinterPage() {
+  const router = useRouter();
   const {
     isSupported,
     isConnected,
@@ -13,13 +15,15 @@ export default function PrinterPage() {
     connect,
     disconnect,
     clearError,
-  } = useBluetoothPrinter();
+  } = usePrinter();
 
   const handleConnect = async () => {
     try {
       await connect();
+      // Navigate to print page after successful connection
+      router.push('/print');
     } catch {
-      // Error is handled in the hook
+      // Error is handled in the context
     }
   };
 

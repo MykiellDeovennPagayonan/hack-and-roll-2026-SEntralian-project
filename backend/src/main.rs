@@ -1,4 +1,5 @@
 mod handlers;
+mod lib;
 mod models;
 mod service;
 
@@ -8,15 +9,20 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
+
+    // Initialize local embedding model and pre-compute library embeddings
+    tracing::info!("Initializing local embeddings...");
+    service::init_embeddings();
+    tracing::info!("Local embeddings ready!");
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -34,7 +40,19 @@ async fn main() {
         // Embedding routes
         .route("/embed", post(handlers::embedding::embed_text))
         .route("/embed/batch", post(handlers::embedding::embed_batch))
-        .route("/embed/search", post(handlers::embedding::similarity_search))
+        .route(
+            "/embed/search",
+            post(handlers::embedding::similarity_search),
+        )
+        // Image matching route
+        .route("/image/match", post(handlers::image_match::match_image))
+        // Image library generator
+        .route(
+            "/admin/generate-library",
+            post(handlers::image_library_generator::generate_library),
+        ) // Add this
+        // Serve static images
+        .nest_service("/images", ServeDir::new("images"))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 

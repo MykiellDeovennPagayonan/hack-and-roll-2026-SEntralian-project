@@ -14,3 +14,5 @@ export {
 
 export { BluetoothPrinterUtil } from "./bluetooth-printer";
 export { X5PrinterProtocol } from "./x5-printer-protocol";
+export { EdgeDetection } from "./edge-detection";
+export { ImageProcessor } from "./image-processor";

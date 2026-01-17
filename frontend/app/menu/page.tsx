@@ -9,7 +9,7 @@ export default function Menu() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-black">
       <Button
-        onClick={() => {}}
+        onClick={() => router.push("/hamster")}
         size="xl"
         className="w-80"
       >

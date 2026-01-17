@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
-import { useBluetoothPrinter } from "@/lib/hooks";
+import { usePrinter } from "@/lib/contexts";
 
 export default function Home() {
   const router = useRouter();
-  const { isConnected, device } = useBluetoothPrinter();
+  const { isConnected, device } = usePrinter();
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black p-8">
