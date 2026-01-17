@@ -18,24 +18,31 @@ interface UseCameraReturn {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   cameraState: CameraState;
   error: string;
+  capturedImage: string | null;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   capturePhoto: () => string | null;
+  clearCapturedImage: () => void;
   setError: (error: string) => void;
   setCameraState: (state: CameraState) => void;
 }
 
 export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
-  const { autoStart = true, ...cameraConfig } = options;
+  const { autoStart = true, facingMode, width, height } = options;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef<boolean>(true);
   const [cameraState, setCameraState] = useState<CameraState>("loading");
   const [error, setError] = useState<string>("");
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
     stopCameraStream(streamRef.current);
     streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -43,20 +50,47 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
       setCameraState("loading");
       setError("");
 
+      // Stop any existing stream first
+      stopCamera();
+
+      const cameraConfig: CameraConfig = { facingMode, width, height };
       const stream = await startCameraStream(cameraConfig);
+
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) {
+        stopCameraStream(stream);
+        return;
+      }
+
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraState("ready");
+        try {
+          await videoRef.current.play();
+          // Double-check mounted state after async play()
+          if (mountedRef.current) {
+            setCameraState("ready");
+          }
+        } catch (playError) {
+          // AbortError is expected when play() is interrupted by cleanup
+          // This happens in React Strict Mode or when component re-renders
+          if (playError instanceof Error && playError.name === "AbortError") {
+            console.debug("Camera play() was interrupted - this is expected during cleanup");
+            return;
+          }
+          throw playError;
+        }
       }
     } catch (err) {
-      console.error("Camera error:", err);
-      setError(getCameraErrorMessage(err));
-      setCameraState("error");
+      // Only set error state if still mounted and not an abort
+      if (mountedRef.current) {
+        console.error("Camera error:", err);
+        setError(getCameraErrorMessage(err));
+        setCameraState("error");
+      }
     }
-  }, [cameraConfig]);
+  }, [facingMode, width, height, stopCamera]);
 
   const capturePhoto = useCallback((): string | null => {
     if (!videoRef.current || cameraState !== "ready") {
@@ -64,7 +98,10 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     }
 
     try {
-      return captureFrameAsBase64(videoRef.current);
+      const base64 = captureFrameAsBase64(videoRef.current);
+      // Store the full data URL for displaying the frozen image
+      setCapturedImage(`data:image/jpeg;base64,${base64}`);
+      return base64;
     } catch (err) {
       console.error("Capture error:", err);
       setError(err instanceof Error ? err.message : "Failed to capture photo");
@@ -72,12 +109,19 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     }
   }, [cameraState]);
 
+  const clearCapturedImage = useCallback(() => {
+    setCapturedImage(null);
+  }, []);
+
   useEffect(() => {
+    mountedRef.current = true;
+
     if (autoStart) {
       startCamera();
     }
 
     return () => {
+      mountedRef.current = false;
       stopCamera();
     };
   }, [autoStart, startCamera, stopCamera]);
@@ -86,9 +130,11 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     videoRef,
     cameraState,
     error,
+    capturedImage,
     startCamera,
     stopCamera,
     capturePhoto,
+    clearCapturedImage,
     setError,
     setCameraState,
   };

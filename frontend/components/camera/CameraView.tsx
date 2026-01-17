@@ -5,22 +5,33 @@ import type { CameraState } from "@/lib/types";
 
 interface CameraViewProps {
   cameraState: CameraState;
+  capturedImage?: string | null;
 }
 
 export const CameraView = forwardRef<HTMLVideoElement, CameraViewProps>(
-  ({ cameraState }, ref) => {
+  ({ cameraState, capturedImage }, ref) => {
     const isVisible = cameraState === "ready" || cameraState === "capturing";
+    const showFrozenImage = capturedImage && cameraState === "capturing";
 
     return (
-      <video
-        ref={ref}
-        autoPlay
-        playsInline
-        muted
-        className={`h-full max-h-screen w-full object-cover ${
-          isVisible ? "block" : "hidden"
-        }`}
-      />
+      <>
+        {showFrozenImage && (
+          <img
+            src={capturedImage}
+            alt="Captured"
+            className="h-full max-h-screen w-full object-cover"
+          />
+        )}
+        <video
+          ref={ref}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full max-h-screen w-full object-cover ${
+            isVisible && !showFrozenImage ? "block" : "hidden"
+          }`}
+        />
+      </>
     );
   }
 );

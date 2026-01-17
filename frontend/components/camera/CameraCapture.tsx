@@ -19,9 +19,11 @@ export function CameraCapture({ config }: CameraCaptureProps) {
     videoRef,
     cameraState,
     error,
+    capturedImage,
     startCamera,
     stopCamera,
     capturePhoto,
+    clearCapturedImage,
     setError,
     setCameraState,
   } = useCamera();
@@ -60,6 +62,7 @@ export function CameraCapture({ config }: CameraCaptureProps) {
     } catch (err) {
       console.error("Capture error:", err);
       setError(err instanceof Error ? err.message : "Failed to process image");
+      clearCapturedImage();
       setCameraState("ready");
     }
   };
@@ -83,7 +86,7 @@ export function CameraCapture({ config }: CameraCaptureProps) {
           <ErrorMessage message={error} onRetry={startCamera} />
         )}
 
-        <CameraView ref={videoRef} cameraState={cameraState} />
+        <CameraView ref={videoRef} cameraState={cameraState} capturedImage={capturedImage} />
 
         {cameraState === "capturing" && (
           <LoadingOverlay message={config.loadingText} />
