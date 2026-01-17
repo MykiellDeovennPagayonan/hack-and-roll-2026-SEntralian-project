@@ -15,6 +15,7 @@
 # Logs
 *.log
 logs/
+.fastembed_cache/
 
 # Temporary files
 tmp/

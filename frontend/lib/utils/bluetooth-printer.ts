@@ -135,9 +135,9 @@ export class BluetoothPrinterUtil {
 
       try {
         if (characteristic.properties.writeWithoutResponse) {
-          await characteristic.writeValueWithoutResponse(bytes);
+          await characteristic.writeValueWithoutResponse(bytes.buffer as ArrayBuffer);
         } else if (characteristic.properties.write) {
-          await characteristic.writeValue(bytes);
+          await characteristic.writeValue(bytes.buffer as ArrayBuffer);
         }
 
         // Small delay between commands
@@ -177,9 +177,9 @@ export class BluetoothPrinterUtil {
 
       try {
         if (characteristic.properties.writeWithoutResponse) {
-          await characteristic.writeValueWithoutResponse(chunk);
+          await characteristic.writeValueWithoutResponse(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer);
         } else {
-          await characteristic.writeValue(chunk);
+          await characteristic.writeValue(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer);
         }
       } catch (error) {
         console.error(`Write error at chunk ${i}:`, error);
@@ -208,9 +208,9 @@ export class BluetoothPrinterUtil {
     try {
       // Prefer writeValueWithoutResponse for speed, fall back to writeValue
       if (characteristic.properties.writeWithoutResponse) {
-        await characteristic.writeValueWithoutResponse(data);
+        await characteristic.writeValueWithoutResponse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
       } else if (characteristic.properties.write) {
-        await characteristic.writeValue(data);
+        await characteristic.writeValue(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
       } else {
         throw new Error("Characteristic does not support writing");
       }
@@ -285,9 +285,9 @@ export class BluetoothPrinterUtil {
 
     for (const cmd of commands) {
       if (characteristic.properties.writeWithoutResponse) {
-        await characteristic.writeValueWithoutResponse(cmd);
+        await characteristic.writeValueWithoutResponse(cmd.buffer.slice(cmd.byteOffset, cmd.byteOffset + cmd.byteLength) as ArrayBuffer);
       } else {
-        await characteristic.writeValue(cmd);
+        await characteristic.writeValue(cmd.buffer.slice(cmd.byteOffset, cmd.byteOffset + cmd.byteLength) as ArrayBuffer);
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

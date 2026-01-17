@@ -10,6 +10,9 @@ export {
   getStoredResult,
   setStoredResult,
   clearStoredResult,
+  getStoredImage,
+  setStoredImage,
+  clearStoredImage,
 } from "./storage";
 
 export { BluetoothPrinterUtil } from "./bluetooth-printer";

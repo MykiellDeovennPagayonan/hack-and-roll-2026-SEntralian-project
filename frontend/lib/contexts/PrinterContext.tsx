@@ -14,10 +14,10 @@ interface PrinterContextType {
   characteristic: BluetoothRemoteGATTCharacteristic | null;
 
   // Actions
-  connect: () => Promise<void>;
+  connect: () => Promise<BluetoothRemoteGATTCharacteristic>;
   disconnect: () => void;
-  printImage: (imageData: ImageData) => Promise<void>;
-  printAndCut: () => Promise<void>;
+  printImage: (imageData: ImageData, char?: BluetoothRemoteGATTCharacteristic) => Promise<void>;
+  printAndCut: (char?: BluetoothRemoteGATTCharacteristic) => Promise<void>;
   clearError: () => void;
 }
 
@@ -38,7 +38,7 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
     setIsSupported(BluetoothPrinterUtil.isBluetoothSupported());
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (): Promise<BluetoothRemoteGATTCharacteristic> => {
     setState(prev => ({ ...prev, isConnecting: true, error: null }));
 
     try {
@@ -62,6 +62,8 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
         });
         setCharacteristic(null);
       });
+
+      return connection.characteristic;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
       setState({
@@ -89,22 +91,24 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
   }, [state.device]);
 
   const printImage = useCallback(
-    async (imageData: ImageData) => {
-      if (!characteristic) {
+    async (imageData: ImageData, char?: BluetoothRemoteGATTCharacteristic) => {
+      const activeChar = char || characteristic;
+      if (!activeChar) {
         throw new Error('Printer not connected');
       }
 
-      await BluetoothPrinterUtil.printProcessedImage(characteristic, imageData);
+      await BluetoothPrinterUtil.printProcessedImage(activeChar, imageData);
     },
     [characteristic]
   );
 
-  const printAndCut = useCallback(async () => {
-    if (!characteristic) {
+  const printAndCut = useCallback(async (char?: BluetoothRemoteGATTCharacteristic) => {
+    const activeChar = char || characteristic;
+    if (!activeChar) {
       throw new Error('Printer not connected');
     }
 
-    await BluetoothPrinterUtil.printAndCut(characteristic);
+    await BluetoothPrinterUtil.printAndCut(activeChar);
   }, [characteristic]);
 
   const clearError = useCallback(() => {

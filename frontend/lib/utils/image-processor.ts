@@ -21,15 +21,25 @@ export class ImageProcessor {
   }
 
   /**
-   * Load image from URL
+   * Load image from URL (fetches as blob to avoid CORS issues)
    */
-  static loadImage(url: string): Promise<HTMLImageElement> {
+  static async loadImage(url: string): Promise<HTMLImageElement> {
+    // Fetch as blob to avoid CORS issues with canvas
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = url;
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to load image'));
+      };
+      img.src = objectUrl;
     });
   }
 
@@ -107,5 +117,145 @@ export class ImageProcessor {
 
     ctx.putImageData(imageData, 0, 0);
     return canvas.toDataURL();
+  }
+
+  /**
+   * Render text to ImageData for thermal printing
+   */
+  static textToImageData(
+    text: string,
+    options?: {
+      width?: number;
+      fontSize?: number;
+      fontFamily?: string;
+      lineHeight?: number;
+      padding?: number;
+    }
+  ): ImageData {
+    const width = options?.width || 384;
+    const fontSize = options?.fontSize || 16;
+    const fontFamily = options?.fontFamily || 'monospace';
+    const lineHeight = options?.lineHeight || 1.4;
+    const padding = options?.padding || 10;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Could not get canvas context');
+    }
+
+    // Set font for text measurement
+    ctx.font = `${fontSize}px ${fontFamily}`;
+
+    // Calculate text wrapping
+    const maxWidth = width - padding * 2;
+    const lines: string[] = [];
+    const paragraphs = text.split('\n');
+
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = ctx.measureText(testLine);
+
+        if (metrics.width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+    }
+
+    // Calculate canvas height
+    const lineHeightPx = fontSize * lineHeight;
+    const height = Math.ceil(lines.length * lineHeightPx + padding * 2);
+
+    // Set canvas size
+    canvas.width = width;
+    canvas.height = height;
+
+    // Fill white background
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw text
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = 'black';
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], padding, padding + i * lineHeightPx);
+    }
+
+    return ctx.getImageData(0, 0, width, height);
+  }
+
+  /**
+   * Render a label (centered text) to ImageData
+   */
+  static labelToImageData(
+    text: string,
+    options?: {
+      width?: number;
+      fontSize?: number;
+      fontFamily?: string;
+      paddingY?: number;
+    }
+  ): ImageData {
+    const width = options?.width || 384;
+    const fontSize = options?.fontSize || 20;
+    const fontFamily = options?.fontFamily || 'monospace';
+    const paddingY = options?.paddingY || 15;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Could not get canvas context');
+    }
+
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    const height = fontSize + paddingY * 2;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Fill white background
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw centered text
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = 'black';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, width / 2, height / 2);
+
+    return ctx.getImageData(0, 0, width, height);
+  }
+
+  /**
+   * Load image from base64 (with or without data URL prefix)
+   */
+  static loadImageFromBase64(base64: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      // Ensure it has the data URL prefix
+      if (base64.startsWith('data:')) {
+        img.src = base64;
+      } else {
+        img.src = `data:image/jpeg;base64,${base64}`;
+      }
+    });
   }
 }

@@ -135,9 +135,14 @@ ollama pull gemma3:4b
 From your development machine:
 
 ```bash
-rsync -avz --exclude 'node_modules' --exclude '.next' --exclude 'target' \
-  "/path/to/project/" \
-  pi@raspberrypi.local:~/hack-and-roll-snap/
+rsync -avz \
+  --exclude 'node_modules' \
+  --exclude '.next' \
+  --exclude 'target' \
+  --exclude '.git' \
+  "/Users/sibato/Documents/hackathons/hack and roll/project/" \
+  sibato@sibato.local:~/hack-and-roll-snap/
+
 ```
 
 ---
@@ -167,9 +172,9 @@ After=network.target ollama.service
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/hack-and-roll-snap/backend
-ExecStart=/home/pi/hack-and-roll-snap/backend/target/release/hack-and-roll-backend
+User=sibato
+WorkingDirectory=/home/sibato/hack-and-roll-snap/backend
+ExecStart=/home/sibato/hack-and-roll-snap/backend/target/release/poem-backend
 Restart=always
 Environment=RUST_LOG=info
 Environment=OLLAMA_BASE_URL=http://localhost:11434
@@ -225,9 +230,9 @@ After=network.target hack-and-roll-backend.service
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/hack-and-roll-snap/frontend
-ExecStart=/usr/bin/pnpm start
+User=sibato
+WorkingDirectory=/home/sibato/hack-and-roll-snap/frontend
+ExecStart=/home/sibato/.local/share/pnpm/pnpm start
 Restart=always
 Environment=NODE_ENV=production
 Environment=PORT=3000
@@ -304,10 +309,10 @@ Add this content:
 ```bash
 #!/bin/bash
 
-LOG="/home/pi/kiosk.log"
+LOG="/home/sibato/kiosk.log"
 echo "$(date): Kiosk script started" > "$LOG"
 
-# Wait for backend and frontend to be ready
+# Wait for BOTH backend and frontend to be ready
 echo "$(date): Waiting for services..." >> "$LOG"
 until curl -s http://localhost:8000/health > /dev/null && curl -s http://localhost:3000 > /dev/null; do
     echo "$(date): Services not ready, waiting..." >> "$LOG"
@@ -363,7 +368,7 @@ nano ~/.config/labwc/autostart
 Add:
 
 ```bash
-/home/pi/start-kiosk.sh &
+/home/sibato/start-kiosk.sh &
 ```
 
 ### Hide Desktop Elements (Optional)
@@ -543,6 +548,16 @@ curl http://localhost:11434/api/tags
 
 # View backend logs
 sudo journalctl -u hack-and-roll-backend.service -n 50
+```
+
+### Sync frontend only
+```bash
+# Sync only the frontend directory
+rsync -avz \
+  --exclude 'node_modules' \
+  --exclude '.next' \
+  "/Users/sibato/Documents/hackathons/hack and roll/project/frontend/" \
+  sibato@sibato.local:~/hack-and-roll-snap/frontend/
 ```
 
 ### Kiosk Not Starting
