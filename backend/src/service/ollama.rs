@@ -1,9 +1,12 @@
 use reqwest::Client;
 
 use crate::models::{
-    OllamaChatMessage, OllamaChatRequest, OllamaChatResponse, OllamaGenerateRequest,
-    OllamaGenerateResponse, OllamaOptions,
+    EmbeddingInput, OllamaChatMessage, OllamaChatRequest, OllamaChatResponse,
+    OllamaEmbeddingRequest, OllamaEmbeddingResponse, OllamaGenerateRequest,
+    OllamaGenerateResponse, OllamaOptions, TextEmbedding,
 };
+
+const EMBEDDING_MODEL: &str = "nomic-embed-text";
 
 pub struct OllamaService {
     client: Client,
@@ -140,6 +143,71 @@ impl OllamaService {
             .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
 
         Ok(result.message.content)
+    }
+
+    // ========================================================================
+    // Embeddings
+    // ========================================================================
+
+    /// Generate embedding for a single text
+    pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>, String> {
+        let embeddings = self.embed_texts(&[text.to_string()]).await?;
+        embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| "No embedding returned".to_string())
+    }
+
+    /// Generate embeddings for multiple texts
+    pub async fn embed_texts(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
+        let request = OllamaEmbeddingRequest {
+            model: EMBEDDING_MODEL.into(),
+            input: EmbeddingInput::Multiple(texts.to_vec()),
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/api/embed", self.base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("Ollama embedding error ({}): {}", status, text));
+        }
+
+        let result: OllamaEmbeddingResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse embedding response: {}", e))?;
+
+        Ok(result.embeddings)
+    }
+
+    /// Create a TextEmbedding from text
+    pub async fn create_text_embedding(&self, text: &str) -> Result<TextEmbedding, String> {
+        let embedding = self.embed_text(text).await?;
+        Ok(TextEmbedding {
+            text: text.to_string(),
+            embedding,
+        })
+    }
+
+    /// Create TextEmbeddings from multiple texts
+    pub async fn create_text_embeddings(&self, texts: &[String]) -> Result<Vec<TextEmbedding>, String> {
+        let embeddings = self.embed_texts(texts).await?;
+
+        Ok(texts
+            .iter()
+            .zip(embeddings)
+            .map(|(text, embedding)| TextEmbedding {
+                text: text.clone(),
+                embedding,
+            })
+            .collect())
     }
 }
 

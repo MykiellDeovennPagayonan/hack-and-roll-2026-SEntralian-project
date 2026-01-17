@@ -43,3 +43,39 @@ pub struct OllamaChatResponse {
 pub struct OllamaChatMessageResponse {
     pub content: String,
 }
+
+// ============================================================================
+// Embeddings
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct OllamaEmbeddingRequest {
+    pub model: String,
+    pub input: EmbeddingInput,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum EmbeddingInput {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OllamaEmbeddingResponse {
+    pub embeddings: Vec<Vec<f32>>,
+}
+
+/// A text with its computed embedding vector
+#[derive(Debug, Clone)]
+pub struct TextEmbedding {
+    pub text: String,
+    pub embedding: Vec<f32>,
+}
+
+/// Result of a similarity search
+#[derive(Debug, Clone, Serialize)]
+pub struct SimilarityResult {
+    pub text: String,
+    pub score: f32,
+}

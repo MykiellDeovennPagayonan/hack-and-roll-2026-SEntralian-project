@@ -26,9 +26,15 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "Hack and Roll Snap API" }))
         .route("/health", get(handlers::health::check))
+        // Poem routes
         .route("/poem/text", post(handlers::poem::generate_from_text))
         .route("/poem/image", post(handlers::poem::generate_from_image))
+        // Roast routes
         .route("/roast/image", post(handlers::roast::generate_from_image))
+        // Embedding routes
+        .route("/embed", post(handlers::embedding::embed_text))
+        .route("/embed/batch", post(handlers::embedding::embed_batch))
+        .route("/embed/search", post(handlers::embedding::similarity_search))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 

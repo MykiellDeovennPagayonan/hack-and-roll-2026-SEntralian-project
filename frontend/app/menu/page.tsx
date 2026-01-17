@@ -1,30 +1,35 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui";
 
 export default function Menu() {
   const router = useRouter();
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-black">
-      <button
+      <Button
         onClick={() => {}}
-        className="w-80 rounded-2xl bg-white px-12 py-6 text-2xl font-bold text-black transition-all hover:scale-105 hover:bg-gray-100 active:scale-95"
+        size="xl"
+        className="w-80"
       >
         What Hamster
-      </button>
-      <button
+      </Button>
+      <Button
         onClick={() => router.push("/poem")}
-        className="w-80 rounded-2xl bg-white px-12 py-6 text-2xl font-bold text-black transition-all hover:scale-105 hover:bg-gray-100 active:scale-95"
+        size="xl"
+        className="w-80"
       >
         Poem
-      </button>
-      <button
+      </Button>
+      <Button
         onClick={() => router.push("/roast")}
-        className="w-80 rounded-2xl bg-orange-500 px-12 py-6 text-2xl font-bold text-white transition-all hover:scale-105 hover:bg-orange-600 active:scale-95"
+        variant="accent"
+        size="xl"
+        className="w-80"
       >
         Roast
-      </button>
+      </Button>
     </div>
   );
 }
