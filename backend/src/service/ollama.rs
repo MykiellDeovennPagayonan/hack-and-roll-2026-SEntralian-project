@@ -100,6 +100,47 @@ impl OllamaService {
 
         Ok(result.message.content)
     }
+
+    pub async fn generate_roast_from_image(&self, image_base64: &str) -> Result<String, String> {
+        let prompt = "Look at this image carefully. Write a short, funny roast or comedic insult about what you see. \
+            Be playful and humorous like a comedy roast - gentle teasing, not mean-spirited. \
+            Keep it light-hearted and fun. Output ONLY the roast, no explanations or commentary. \
+            Make it punchy and memorable, 2-4 sentences max.";
+
+        let message = OllamaChatMessage {
+            role: "user".into(),
+            content: prompt.into(),
+            images: Some(vec![image_base64.into()]),
+        };
+
+        let request = OllamaChatRequest {
+            model: "gemma3:4b".into(),
+            messages: vec![message],
+            stream: false,
+            options: OllamaOptions { temperature: 0.9 },
+        };
+
+        let response = self
+            .client
+            .post(format!("{}/api/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("Ollama error ({}): {}", status, text));
+        }
+
+        let result: OllamaChatResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+
+        Ok(result.message.content)
+    }
 }
 
 impl Default for OllamaService {

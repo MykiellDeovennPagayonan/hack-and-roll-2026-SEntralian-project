@@ -20,10 +20,10 @@ export default function Menu() {
         Poem
       </button>
       <button
-        onClick={() => {}}
-        className="w-80 rounded-2xl bg-white px-12 py-6 text-2xl font-bold text-black transition-all hover:scale-105 hover:bg-gray-100 active:scale-95"
+        onClick={() => router.push("/roast")}
+        className="w-80 rounded-2xl bg-orange-500 px-12 py-6 text-2xl font-bold text-white transition-all hover:scale-105 hover:bg-orange-600 active:scale-95"
       >
-        Insult
+        Roast
       </button>
     </div>
   );

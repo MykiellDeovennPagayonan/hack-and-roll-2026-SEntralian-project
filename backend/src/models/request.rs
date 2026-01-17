@@ -10,3 +10,8 @@ pub struct ImagePoemRequest {
     pub image_base64: String,
     pub prompt: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ImageRoastRequest {
+    pub image_base64: String,
+}

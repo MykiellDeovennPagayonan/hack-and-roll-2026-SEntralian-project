@@ -24,10 +24,11 @@ async fn main() {
         .allow_headers(Any);
 
     let app = Router::new()
-        .route("/", get(|| async { "Poem Generator API" }))
+        .route("/", get(|| async { "Hack and Roll Snap API" }))
         .route("/health", get(handlers::health::check))
         .route("/poem/text", post(handlers::poem::generate_from_text))
         .route("/poem/image", post(handlers::poem::generate_from_image))
+        .route("/roast/image", post(handlers::roast::generate_from_image))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
