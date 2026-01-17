@@ -1,4 +1,4 @@
-# Raspberry Pi Kiosk Deployment Guide (Pi 5 with labwc)
+# Raspberry Pi Deployment Guide (Pi 5 with labwc Kiosk)
 
 ## Prerequisites
 
@@ -18,6 +18,11 @@ sudo apt-get install -y nodejs
 npm install -g pnpm
 ```
 
+### Install unclutter (for hiding mouse cursor)
+```bash
+sudo apt-get install -y unclutter
+```
+
 ---
 
 ## Step 1: Transfer Project to Raspberry Pi
@@ -28,10 +33,8 @@ From your Mac, run:
 ```bash
 rsync -avz --exclude 'node_modules' --exclude '.next' \
   "/Users/sibato/Documents/hackathons/hack and roll/project/frontend/" \
-  pi@raspberrypi.local:~/kiosk-app/
+  sibato@sibato.local:~/hack-and-roll-snap/
 ```
-
-Replace `pi@raspberrypi.local` with your Raspberry Pi's username and hostname.
 
 ---
 
@@ -39,8 +42,8 @@ Replace `pi@raspberrypi.local` with your Raspberry Pi's username and hostname.
 
 SSH into the Raspberry Pi:
 ```bash
-ssh pi@raspberrypi.local
-cd ~/kiosk-app
+ssh sibato@sibato.local
+cd ~/hack-and-roll-snap
 pnpm install
 pnpm build
 ```
@@ -49,25 +52,31 @@ pnpm build
 
 ## Step 3: Create systemd Service for Next.js
 
-Create a systemd service to auto-start your Next.js app:
+First, find where pnpm is installed:
 ```bash
-sudo nano /etc/systemd/system/kiosk-app.service
+which pnpm
 ```
 
-Add this content (adjust User and WorkingDirectory as needed):
+Create a systemd service:
+```bash
+sudo nano /etc/systemd/system/nextjs-app.service
+```
+
+Add this content (adjust ExecStart path based on `which pnpm` output):
 ```ini
 [Unit]
-Description=Kiosk Application
+Description=Next.js Application
 After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/kiosk-app
-ExecStart=/usr/bin/pnpm start
+User=sibato
+WorkingDirectory=/home/sibato/hack-and-roll-snap
+ExecStart=/home/sibato/.local/share/pnpm/pnpm start
 Restart=always
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=PATH=/home/sibato/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
 WantedBy=multi-user.target
@@ -76,47 +85,66 @@ WantedBy=multi-user.target
 Enable and start the service:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable kiosk-app.service
-sudo systemctl start kiosk-app.service
-sudo systemctl status kiosk-app.service
+sudo systemctl enable nextjs-app.service
+sudo systemctl start nextjs-app.service
+sudo systemctl status nextjs-app.service
+```
+
+**Verify it's working:**
+```bash
+curl http://localhost:3000
 ```
 
 ---
 
-## Step 4: Set Up Kiosk Mode for labwc (Pi 5)
+## Step 4: Configure Kiosk with labwc
 
-### Install Chromium if not already installed
+### Why labwc?
+labwc is the default Wayland compositor on Raspberry Pi OS. It works reliably with the Pi's GPU and provides a stable kiosk environment.
+
+### Fix Keyring Password Prompt
+
+Remove the keyring to prevent password prompts:
 ```bash
-sudo apt-get update
-sudo apt-get install -y chromium-browser
+rm -rf ~/.local/share/keyrings/*
+mkdir -p ~/.local/share/keyrings
+echo "Default" > ~/.local/share/keyrings/default
 ```
 
-### Create Kiosk Script
+### Create Kiosk Startup Script
 ```bash
-nano ~/kiosk.sh
+nano ~/start-kiosk.sh
 ```
 
 Add this content:
 ```bash
 #!/bin/bash
 
-# Log file for debugging
-LOG="$HOME/kiosk.log"
+# Log file
+LOG="/home/sibato/kiosk.log"
 echo "$(date): Kiosk script started" > "$LOG"
 
-# Wait for Next.js server to be ready
-echo "$(date): Waiting for Next.js server..." >> "$LOG"
+# Wait for Next.js to be ready
+echo "$(date): Waiting for Next.js..." >> "$LOG"
 until curl -s http://localhost:3000 > /dev/null; do
-    echo "$(date): Server not ready, waiting..." >> "$LOG"
+    echo "$(date): Next.js not ready, waiting..." >> "$LOG"
     sleep 2
 done
-echo "$(date): Server is ready!" >> "$LOG"
+echo "$(date): Next.js is ready!" >> "$LOG"
+
+# Disable screen blanking
+xset s off
+xset -dpms
+xset s noblank
+
+# Hide cursor
+unclutter -idle 0.1 -root &
 
 # Remove Chromium crash warning
 sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' ~/.config/chromium/Default/Preferences 2>/dev/null
 sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/' ~/.config/chromium/Default/Preferences 2>/dev/null
 
-# Launch Chromium in kiosk mode
+# Launch Chromium
 echo "$(date): Launching Chromium..." >> "$LOG"
 chromium-browser \
   --start-maximized \
@@ -124,9 +152,12 @@ chromium-browser \
   --noerrdialogs \
   --disable-infobars \
   --no-first-run \
+  --incognito \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
-  --incognito \
+  --disable-gpu \
+  --password-store=basic \
+  --use-gl=swiftshader \
   http://localhost:3000 >> "$LOG" 2>&1
 
 echo "$(date): Chromium exited" >> "$LOG"
@@ -134,29 +165,43 @@ echo "$(date): Chromium exited" >> "$LOG"
 
 Make it executable:
 ```bash
-chmod +x ~/kiosk.sh
+chmod +x ~/start-kiosk.sh
 ```
 
-### Configure labwc Autostart (FOR PI 5)
+### Configure labwc Autostart
 ```bash
 mkdir -p ~/.config/labwc
 nano ~/.config/labwc/autostart
 ```
 
-Add this content:
+Add this line:
 ```bash
 # Launch kiosk
-/home/pi/kiosk.sh &
+/home/sibato/start-kiosk.sh &
 ```
 
-### Optional: Hide Desktop Elements
+---
 
-To minimize desktop visibility before kiosk starts:
+## Step 5: Configure Desktop Autologin
+```bash
+sudo raspi-config
+```
+
+Navigate to:
+- **System Options** → **Boot / Auto Login** → **Desktop Autologin**
+
+This ensures the system boots to the desktop environment (labwc), which then launches the kiosk script.
+
+---
+
+## Step 6: Hide Desktop Elements (Optional)
+
+To minimize desktop visibility behind the kiosk:
 ```bash
 sudo nano /etc/xdg/labwc/autostart
 ```
 
-Comment out these lines:
+Comment out the panel and desktop manager:
 ```bash
 #/usr/bin/lwrespawn /usr/bin/wf-panel-pi &
 #/usr/bin/lwrespawn /usr/bin/pcmanfm --desktop --profile LXDE-pi &
@@ -165,35 +210,26 @@ Comment out these lines:
 
 ---
 
-## Step 5: Disable Screen Blanking (Optional)
-
-To prevent the screen from going blank:
-```bash
-sudo nano /etc/xdg/labwc/environment
-```
-
-Add:
-```
-WAYLAND_DISPLAY=wayland-1
-```
-
-Or use raspi-config:
+## Step 7: Disable Screen Blanking
 ```bash
 sudo raspi-config
-# Navigate to: Display Options > Screen Blanking > Disable
 ```
+
+Navigate to:
+- **Display Options** → **Screen Blanking** → **No**
 
 ---
 
-## Step 6: Reboot and Test
+## Step 8: Reboot and Test
 ```bash
 sudo reboot
 ```
 
-After reboot, check the log:
-```bash
-cat ~/kiosk.log
-```
+After reboot, the system should:
+1. Auto-login to desktop
+2. labwc starts
+3. Kiosk script waits for Next.js server
+4. Launch Chromium in fullscreen kiosk mode
 
 ---
 
@@ -201,29 +237,29 @@ cat ~/kiosk.log
 
 ### Check if Next.js is running
 ```bash
-sudo systemctl status kiosk-app.service
+sudo systemctl status nextjs-app.service
 curl http://localhost:3000
-```
-
-### Stop Kiosk Mode (via SSH)
-```bash
-ssh pi@raspberrypi.local
-pkill chromium
-```
-
-### Restart Next.js server
-```bash
-sudo systemctl restart kiosk-app.service
-```
-
-### View Next.js Logs
-```bash
-sudo journalctl -u kiosk-app.service -f
 ```
 
 ### View Kiosk Logs
 ```bash
 cat ~/kiosk.log
+```
+
+### View Next.js Logs
+```bash
+sudo journalctl -u nextjs-app.service -f
+```
+
+### Restart Next.js server
+```bash
+sudo systemctl restart nextjs-app.service
+```
+
+### Manually restart kiosk (from SSH)
+```bash
+pkill chromium
+DISPLAY=:0 ~/start-kiosk.sh &
 ```
 
 ### Update the App
@@ -233,14 +269,16 @@ From your Mac:
 # Sync changes
 rsync -avz --exclude 'node_modules' --exclude '.next' \
   "/Users/sibato/Documents/hackathons/hack and roll/project/frontend/" \
-  pi@raspberrypi.local:~/kiosk-app/
+  sibato@sibato.local:~/hack-and-roll-snap/
 
 # SSH and rebuild
-ssh pi@raspberrypi.local
-cd ~/kiosk-app
+ssh sibato@sibato.local
+cd ~/hack-and-roll-snap
 pnpm install
 pnpm build
-sudo systemctl restart kiosk-app.service
+sudo systemctl restart nextjs-app.service
+
+# Kiosk will auto-reload when server restarts
 ```
 
 ---
@@ -249,14 +287,17 @@ sudo systemctl restart kiosk-app.service
 
 ### App not loading
 ```bash
-# Check if service is running
-sudo systemctl status kiosk-app.service
+# Check if Next.js service is running
+sudo systemctl status nextjs-app.service
 
 # Check if server responds
 curl http://localhost:3000
 
-# View service logs
-sudo journalctl -u kiosk-app.service -n 50
+# View Next.js service logs
+sudo journalctl -u nextjs-app.service -n 50
+
+# Check if pnpm is in PATH
+which pnpm
 ```
 
 ### Kiosk not starting
@@ -264,21 +305,132 @@ sudo journalctl -u kiosk-app.service -n 50
 # Check kiosk log
 cat ~/kiosk.log
 
-# Check labwc config
+# Check if chromium is running
+ps aux | grep chromium
+
+# Check labwc autostart config
 cat ~/.config/labwc/autostart
 
-# Test script manually from desktop terminal
-~/kiosk.sh
+# Verify script is executable
+ls -la ~/start-kiosk.sh
 ```
 
-### Need to exit kiosk temporarily
-- Press `Alt + F4` to close Chromium
-- Or SSH in and run: `pkill chromium`
-
-### Touch Screen Calibration
-If using a touch screen:
+### Keyring password prompt appearing
 ```bash
-sudo apt-get install xinput-calibrator
-# Run calibration
-xinput_calibrator
+# Remove keyring
+rm -rf ~/.local/share/keyrings/*
+mkdir -p ~/.local/share/keyrings
+echo "Default" > ~/.local/share/keyrings/default
+
+# Reboot
+sudo reboot
 ```
+
+### Screen goes blank
+```bash
+# Disable screen blanking via raspi-config
+sudo raspi-config
+# Display Options > Screen Blanking > No
+
+# Check if xset commands are working
+cat ~/kiosk.log
+```
+
+### GL/GPU errors in logs
+This is normal. The `--disable-gpu` and `--use-gl=swiftshader` flags handle this by using software rendering instead of GPU acceleration.
+
+### Next.js service fails to start
+```bash
+# Check service logs
+sudo journalctl -u nextjs-app.service -xe
+
+# Verify pnpm path
+which pnpm
+
+# Try starting manually
+cd ~/hack-and-roll-snap
+pnpm start
+```
+
+### Need to access desktop temporarily
+```bash
+# From SSH, kill chromium
+pkill chromium
+
+# The desktop will be visible underneath
+# To restart kiosk:
+DISPLAY=:0 ~/start-kiosk.sh &
+```
+
+---
+
+## Architecture Notes
+
+### How It Works
+1. **Desktop Autologin**: System boots to desktop environment (labwc) as user `sibato`
+2. **labwc Compositor**: Provides the Wayland display environment
+3. **Autostart Script**: labwc runs `~/start-kiosk.sh` on startup
+4. **Kiosk Script**: Waits for Next.js, then launches Chromium in kiosk mode
+5. **Software Rendering**: Uses SwiftShader for GL rendering to avoid GPU issues
+
+### Why labwc instead of Cage?
+- **GPU Compatibility**: labwc works with Pi 5's GPU out of the box
+- **Pre-installed**: Comes with Raspberry Pi OS
+- **Proven**: This is the method that worked in previous setups
+- **Flexible**: Can still access desktop if needed
+
+---
+
+## Quick Deployment Checklist
+
+- [ ] Node.js and pnpm installed
+- [ ] unclutter installed
+- [ ] Project transferred and built
+- [ ] Next.js systemd service created and enabled
+- [ ] Next.js service is running: `sudo systemctl status nextjs-app.service`
+- [ ] Server responds: `curl http://localhost:3000`
+- [ ] Keyring removed/disabled
+- [ ] Kiosk script created and executable
+- [ ] labwc autostart configured
+- [ ] Desktop autologin configured
+- [ ] Screen blanking disabled via raspi-config
+- [ ] Rebooted and verified kiosk displays
+
+---
+
+## Advanced Configuration
+
+### Custom Chromium Flags
+
+Edit the kiosk script to add more Chromium flags:
+```bash
+nano ~/start-kiosk.sh
+```
+
+Add flags to the `chromium-browser` command, for example:
+```bash
+chromium-browser \
+  --start-maximized \
+  --kiosk \
+  --noerrdialogs \
+  --disable-infobars \
+  --no-first-run \
+  --incognito \
+  --disable-session-crashed-bubble \
+  --disable-restore-session-state \
+  --disable-gpu \
+  --password-store=basic \
+  --use-gl=swiftshader \
+  --disable-features=TranslateUI \
+  --overscroll-history-navigation=0 \
+  http://localhost:3000
+```
+
+### Remote Access
+
+You can always SSH in for management:
+```bash
+ssh sibato@sibato.local
+```
+
+All commands work normally via SSH. The kiosk runs on the physical display while you manage via SSH.
