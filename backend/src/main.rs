@@ -50,13 +50,13 @@ async fn main() {
         .route(
             "/admin/generate-library",
             post(handlers::image_library_generator::generate_library),
-        ) // Add this
+        )
         // Serve static images
         .nest_service("/images", ServeDir::new("images"))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    let addr = "127.0.0.1:8000";
+    let addr = "0.0.0.0:8000";
     tracing::info!("Server running on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

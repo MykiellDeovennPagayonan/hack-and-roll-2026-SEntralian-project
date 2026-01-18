@@ -1,6 +1,6 @@
 # Snap
 
-A camera-powered AI application that matches your photo to a hamster personality or roasts you with AI-generated comedy.
+A camera-powered AI application that matches your photo to a hamster personality or roasts you comedy.
 
 ## Features
 
