@@ -119,7 +119,7 @@ export function CameraCapture({ config }: CameraCaptureProps) {
               <div className="text-xs text-[#ff0041]/80">{error}</div>
             </div>
             <button
-              onClick={startCamera}
+              onClick={() => startCamera()}
               style={{ borderColor: accentColor, color: accentColor }}
               className="border-2 bg-black px-6 py-2 text-xs tracking-widest transition-all"
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = accentColor, e.currentTarget.style.color = 'black')}

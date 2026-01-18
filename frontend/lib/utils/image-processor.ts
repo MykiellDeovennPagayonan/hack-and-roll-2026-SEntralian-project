@@ -199,7 +199,7 @@ export class ImageProcessor {
   }
 
   /**
-   * Render a label (centered text) to ImageData
+   * Render a label (centered text with word wrap) to ImageData
    */
   static labelToImageData(
     text: string,
@@ -208,12 +208,16 @@ export class ImageProcessor {
       fontSize?: number;
       fontFamily?: string;
       paddingY?: number;
+      paddingX?: number;
+      lineHeight?: number;
     }
   ): ImageData {
     const width = options?.width || 384;
     const fontSize = options?.fontSize || 20;
     const fontFamily = options?.fontFamily || 'monospace';
     const paddingY = options?.paddingY || 15;
+    const paddingX = options?.paddingX || 10;
+    const lineHeight = options?.lineHeight || 1.3;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -222,8 +226,34 @@ export class ImageProcessor {
       throw new Error('Could not get canvas context');
     }
 
+    // Set font for text measurement
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
-    const height = fontSize + paddingY * 2;
+
+    // Calculate text wrapping
+    const maxWidth = width - paddingX * 2;
+    const lines: string[] = [];
+    const words = text.split(' ');
+    let currentLine = '';
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    // Calculate height based on number of lines
+    const lineHeightPx = fontSize * lineHeight;
+    const height = Math.ceil(lines.length * lineHeightPx + paddingY * 2);
 
     canvas.width = width;
     canvas.height = height;
@@ -236,8 +266,11 @@ export class ImageProcessor {
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
     ctx.fillStyle = 'black';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, width / 2, height / 2);
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], width / 2, paddingY + i * lineHeightPx);
+    }
 
     return ctx.getImageData(0, 0, width, height);
   }

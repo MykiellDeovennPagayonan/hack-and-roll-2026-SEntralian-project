@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { CameraState } from "../types";
 import {
-  startCameraStream,
   stopCameraStream,
   captureFrameAsBase64,
   getCameraErrorMessage,
-  type CameraConfig,
 } from "../utils/camera";
 
-interface UseCameraOptions extends CameraConfig {
+interface UseCameraOptions {
   autoStart?: boolean;
+  preferExternalCamera?: boolean;
 }
 
 interface UseCameraReturn {
@@ -19,16 +18,19 @@ interface UseCameraReturn {
   cameraState: CameraState;
   error: string;
   capturedImage: string | null;
-  startCamera: () => Promise<void>;
+  cameras: MediaDeviceInfo[];
+  selectedCameraId: string | null;
+  startCamera: (deviceId?: string) => Promise<void>;
   stopCamera: () => void;
   capturePhoto: () => string | null;
   clearCapturedImage: () => void;
   setError: (error: string) => void;
   setCameraState: (state: CameraState) => void;
+  switchCamera: (deviceId: string) => Promise<void>;
 }
 
 export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
-  const { autoStart = true, facingMode, width, height } = options;
+  const { autoStart = true, preferExternalCamera = true } = options;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -36,6 +38,46 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
   const [cameraState, setCameraState] = useState<CameraState>("loading");
   const [error, setError] = useState<string>("");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+
+  // Get list of available cameras
+  const getCameras = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    try {
+      // Need to request permission first to get camera labels
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stopCameraStream(tempStream);
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      setCameras(videoDevices);
+      return videoDevices;
+    } catch (err) {
+      console.error("Failed to enumerate cameras:", err);
+      return [];
+    }
+  }, []);
+
+  // Find preferred camera (external over built-in)
+  const findPreferredCamera = useCallback((deviceList: MediaDeviceInfo[]): string | undefined => {
+    if (deviceList.length === 0) return undefined;
+    if (deviceList.length === 1) return deviceList[0].deviceId;
+
+    if (preferExternalCamera) {
+      // Look for external camera (usually doesn't have "built-in" or "integrated" in the label)
+      const externalCamera = deviceList.find(device => {
+        const label = device.label.toLowerCase();
+        return !label.includes('built-in') &&
+               !label.includes('integrated') &&
+               !label.includes('facetime') &&
+               !label.includes('isight');
+      });
+      if (externalCamera) return externalCamera.deviceId;
+    }
+
+    // Default to first camera
+    return deviceList[0].deviceId;
+  }, [preferExternalCamera]);
 
   const stopCamera = useCallback(() => {
     stopCameraStream(streamRef.current);
@@ -45,16 +87,32 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
     }
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (deviceId?: string) => {
     try {
       setCameraState("loading");
       setError("");
 
       // Stop any existing stream first
-      stopCamera();
+      stopCameraStream(streamRef.current);
+      streamRef.current = null;
 
-      const cameraConfig: CameraConfig = { facingMode, width, height };
-      const stream = await startCameraStream(cameraConfig);
+      // Get cameras if we haven't yet
+      let cameraList = cameras;
+      if (cameraList.length === 0) {
+        cameraList = await getCameras();
+      }
+
+      // Determine which camera to use
+      const targetDeviceId = deviceId || findPreferredCamera(cameraList);
+
+      // Build constraints
+      const constraints: MediaStreamConstraints = {
+        video: targetDeviceId
+          ? { deviceId: { exact: targetDeviceId } }
+          : { facingMode: 'user' }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       // Check if component is still mounted before updating state
       if (!mountedRef.current) {
@@ -64,17 +122,21 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
 
       streamRef.current = stream;
 
+      // Get the actual device ID being used
+      const videoTrack = stream.getVideoTracks()[0];
+      const settings = videoTrack.getSettings();
+      if (settings.deviceId) {
+        setSelectedCameraId(settings.deviceId);
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         try {
           await videoRef.current.play();
-          // Double-check mounted state after async play()
           if (mountedRef.current) {
             setCameraState("ready");
           }
         } catch (playError) {
-          // AbortError is expected when play() is interrupted by cleanup
-          // This happens in React Strict Mode or when component re-renders
           if (playError instanceof Error && playError.name === "AbortError") {
             console.debug("Camera play() was interrupted - this is expected during cleanup");
             return;
@@ -83,14 +145,18 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
         }
       }
     } catch (err) {
-      // Only set error state if still mounted and not an abort
       if (mountedRef.current) {
         console.error("Camera error:", err);
         setError(getCameraErrorMessage(err));
         setCameraState("error");
       }
     }
-  }, [facingMode, width, height, stopCamera]);
+  }, [cameras, getCameras, findPreferredCamera]);
+
+  const switchCamera = useCallback(async (deviceId: string) => {
+    stopCamera();
+    await startCamera(deviceId);
+  }, [stopCamera, startCamera]);
 
   const capturePhoto = useCallback((): string | null => {
     if (!videoRef.current || cameraState !== "ready") {
@@ -99,7 +165,6 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
 
     try {
       const base64 = captureFrameAsBase64(videoRef.current);
-      // Store the full data URL for displaying the frozen image
       setCapturedImage(`data:image/jpeg;base64,${base64}`);
       return base64;
     } catch (err) {
@@ -122,20 +187,27 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
 
     return () => {
       mountedRef.current = false;
-      stopCamera();
+      stopCameraStream(streamRef.current);
+      streamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     };
-  }, [autoStart, startCamera, stopCamera]);
+  }, [autoStart]);
 
   return {
     videoRef,
     cameraState,
     error,
     capturedImage,
+    cameras,
+    selectedCameraId,
     startCamera,
     stopCamera,
     capturePhoto,
     clearCapturedImage,
     setError,
     setCameraState,
+    switchCamera,
   };
 }

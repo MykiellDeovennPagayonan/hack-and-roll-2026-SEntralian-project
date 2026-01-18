@@ -1,4 +1,5 @@
 use reqwest::Client;
+use std::time::Duration;
 
 use crate::models::{
     EmbeddingInput, OllamaChatMessage, OllamaChatRequest, OllamaChatResponse,
@@ -7,6 +8,8 @@ use crate::models::{
 };
 
 const EMBEDDING_MODEL: &str = "nomic-embed-text";
+// Timeout for Ollama requests (5 minutes for slow devices like Raspberry Pi)
+const OLLAMA_TIMEOUT_SECS: u64 = 300;
 
 pub struct OllamaService {
     client: Client,
@@ -17,10 +20,13 @@ impl OllamaService {
     pub fn new() -> Self {
         let base_url =
             std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".into());
-        Self {
-            client: Client::new(),
-            base_url,
-        }
+
+        let client = Client::builder()
+            .timeout(Duration::from_secs(OLLAMA_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
+        Self { client, base_url }
     }
 
     pub async fn generate_poem_from_text(&self, prompt: &str) -> Result<String, String> {
